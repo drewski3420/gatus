@@ -197,6 +197,15 @@ func sanitizeAndResolveNumericalWithContext(list []string, result *Result, conte
 		if duration, err := time.ParseDuration(element); duration != 0 && err == nil {
 			// If the string is a duration, convert it to milliseconds
 			resolvedNumericalParameters = append(resolvedNumericalParameters, duration.Milliseconds())
+		} else if parsedTime, err := time.Parse(time.RFC3339, element); err == nil {
+			// Try parsing as RFC3339 date (e.g., "2024-01-30T15:04:05Z")
+			// Calculate age (time elapsed since the date)
+			age := time.Since(parsedTime)
+			resolvedNumericalParameters = append(resolvedNumericalParameters, age.Milliseconds())
+		} else if parsedTime, err := time.Parse(time.RFC3339Nano, element); err == nil {
+			// Also try RFC3339Nano for nanosecond precision (e.g., "2024-01-30T15:04:05.123456789Z")
+			age := time.Since(parsedTime)
+			resolvedNumericalParameters = append(resolvedNumericalParameters, age.Milliseconds())
 		} else if number, err := strconv.ParseInt(element, 0, 64); err != nil {
 			// It's not an int, so we'll check if it's a float
 			if f, err := strconv.ParseFloat(element, 64); err == nil {
@@ -225,6 +234,13 @@ func prettifyNumericalParameters(parameters []string, resolvedParameters []int64
 		} else if _, err := time.ParseDuration(parameters[i]); err == nil {
 			// If the original parameter was a duration string (like "48h"), format the resolved value
 			// as a duration string too so it matches and doesn't show in parentheses
+			duration := time.Duration(resolvedParameters[i]) * time.Millisecond
+			resolvedStrings[i] = formatDuration(duration)
+		} else if (strings.Contains(parameters[i], "[BODY]") || strings.Contains(parameters[i], "[CONTEXT]")) &&
+			resolvedParameters[i] > 0 && resolvedParameters[i] < 315360000000000 {
+			// Likely a date field from JSON/context - format as relative time
+			// The heuristic: parameter contains [BODY] or [CONTEXT] AND
+			// resolved value is positive and reasonable (< 10000 years in ms)
 			duration := time.Duration(resolvedParameters[i]) * time.Millisecond
 			resolvedStrings[i] = formatDuration(duration)
 		} else {
